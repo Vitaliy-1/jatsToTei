@@ -14,6 +14,7 @@ import javax.xml.xpath.XPathExpressionException;
 import javax.xml.xpath.XPathFactory;
 import java.io.File;
 import java.io.IOException;
+import java.io.StringWriter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,6 +24,7 @@ public class JATSDocument {
 	private File file;
 	private Document jatsDocument;
 	private Document teiDocument;
+	private String teiString;
 	
 	public JATSDocument(File file) throws IOException, SAXException, ParserConfigurationException {
 		this.file = file;
@@ -98,10 +100,34 @@ public class JATSDocument {
 		transformer.transform(domSource, streamResult);
 	}
 	
+	public String getTeiString() throws TransformerException, XPathExpressionException, ParserConfigurationException {
+		TransformerFactory transformerFactory = TransformerFactory.newInstance();
+		Transformer transformer = transformerFactory.newTransformer();
+		transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+		DOMSource domSource = new DOMSource(this.getTeiFullText());
+		StringWriter stringWriter = new StringWriter();
+		StreamResult streamResult = new StreamResult(stringWriter);
+		transformer.transform(domSource, streamResult);
+		
+		this.teiString = stringWriter.toString();
+		
+		return this.teiString;
+	}
+	
 	
 	private void nodesToTei() throws XPathExpressionException {
 		renameNodes("/tei/body", "text");
 		renameNodes("//title", "head");
+		
+		// adding linebreak at the end of the element
+		appendLast("//table-wrap/label", "lb");
+		appendLast("//table-wrap/caption/title", "lb");
+		
+		// replacing figure and box label with title
+		replaceAsLastChild("//boxed-text", "label");
+		replaceAsLastChild("//boxed-text", "caption");
+		replaceAsLastChild("//fig", "label");
+		replaceAsLastChild("//fig", "caption");
 		
 		// boxes
 		HashMap<String, String> boxAttributes = new HashMap<>();
@@ -315,13 +341,40 @@ public class JATSDocument {
 		return null;
 	}
 	
+	private void appendLast(String xpathExpression, String newNodeName) throws XPathExpressionException {
+		NodeList tableLabels = (NodeList) this.xPath.compile(xpathExpression).evaluate(this.teiDocument, XPathConstants.NODESET);
+		for (int y = 0; y < tableLabels.getLength(); y++) {
+			Element lb = teiDocument.createElement(newNodeName);
+			tableLabels.item(y).appendChild(lb);
+		}
+	}
+	
+	private void replaceAsLastChild(String xpathExpression, String nodeName) throws XPathExpressionException {
+		NodeList nodeList = (NodeList) this.xPath.compile(xpathExpression).evaluate(this.teiDocument, XPathConstants.NODESET);
+		for (int i = 0; i < nodeList.getLength(); i++) {
+			
+			Node boxedText = nodeList.item(i);
+			Node boxedLabel = (Node) this.xPath.compile(nodeName).evaluate(boxedText, XPathConstants.NODE);
+			if (boxedLabel != null) {
+				Node clonedLabel = boxedLabel.cloneNode(true);
+				boxedText.removeChild(boxedLabel);
+				
+				if (nodeName.equals("label")) {
+					Element lb = this.teiDocument.createElement("lb");
+					boxedText.appendChild(lb);
+				}
+				boxedText.appendChild(clonedLabel);
+			}
+		}
+	}
+	
 	public boolean fullTextExists() throws XPathExpressionException {
-		NodeList nodeList = (NodeList) this.xPath.compile("/body/node()").evaluate(this.jatsDocument, XPathConstants.NODESET);
-		if (nodeList.getLength() == 0) {
-			//System.out.println(this.getFileName() + " has empty body tag");
-			return false;
-		} else {
+		NodeList nodeList = (NodeList) this.xPath.compile("//body/node()").evaluate(this.jatsDocument, XPathConstants.NODESET);
+		if (nodeList.getLength() != 0) {
 			return true;
 		}
+		
+		System.err.println(this.getFileName() + " has empty body tag");
+		return false;
 	}
 }
