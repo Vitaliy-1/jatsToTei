@@ -45,11 +45,10 @@ public class LineBreaker implements Runnable {
 		
 		for (String x: linebreak_contexts) {
 			String x_lb = x.replace("\n", "<lb/>");
-			x = escapeRegex(x);
 			x = x.replaceAll("\n", " "); // formatting string to match it inside tei file
 			
 			teiDocument = teiDocument.replaceAll("\\s{2,}", " "); // deleting extra whitespaces (why they are present in original JATS XML in the first place?)
-			teiDocument = teiDocument.replaceAll(x, x_lb);
+			teiDocument = teiDocument.replace(x, x_lb);
 			
 			
 	    /*
